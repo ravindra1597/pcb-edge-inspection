@@ -179,3 +179,14 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Dataset files
+data/*
+!data/README.md
+
+# Training outputs
+runs/
+training_runs/
+
+# Model weights
+*.pt
