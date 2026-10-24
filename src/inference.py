@@ -1,13 +1,16 @@
 from pathlib import Path
 from ultralytics import YOLO
-
+import os
 # import from decision_engine.py
 from .decision_engine import make_decision
 
 
 MODEL_PATH = Path(
-    "runs/detect/training_runs/"
-    "yolov8n_pcb_baseline/weights/best.pt"
+    os.getenv(
+        "PCB_MODEL_PATH",
+        "runs/detect/training_runs/"
+        "yolov8n_pcb_baseline/weights/best.pt",
+    )
 )
 
 
@@ -20,6 +23,7 @@ class PCBDefectDetector:
     def __init__(self, model_path=MODEL_PATH, confidence_threshold=0.25):
         self.model_path = Path(model_path)
         self.confidence_threshold = confidence_threshold
+        self.device = os.getenv("PCB_DEVICE", "cpu")
 
         if not self.model_path.exists():
             raise FileNotFoundError(
@@ -39,6 +43,7 @@ class PCBDefectDetector:
         results = self.model.predict(
             source=str(image_path),
             conf=self.confidence_threshold,
+            device=self.device,
             verbose=False,
         )
 

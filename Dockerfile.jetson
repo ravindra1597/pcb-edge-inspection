@@ -1,0 +1,25 @@
+FROM nvcr.io/nvidia/pytorch:25.06-py3-igpu
+
+WORKDIR /app
+
+# Preserve NVIDIA's GPU-enabled PyTorch stack.
+# OpenCV and Ultralytics are installed without dependency resolution
+# so pip does not replace NVIDIA's torch/torchvision packages.
+RUN python3 -m pip install --no-cache-dir --no-deps \
+    opencv-python-headless==4.12.0.88 \
+    ultralytics==8.4.184
+
+# API dependencies
+RUN python3 -m pip install --no-cache-dir \
+    fastapi==0.162.0 \
+    uvicorn==0.54.0 \
+    python-multipart==0.0.32
+
+COPY src/ /app/src/
+
+ENV PCB_MODEL_PATH=/models/best.engine
+ENV PCB_DEVICE=0
+
+EXPOSE 8000
+
+CMD ["python3","-m","uvicorn","src.api:app","--host","0.0.0.0","--port","8000"]

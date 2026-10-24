@@ -1,12 +1,14 @@
 # PCB Edge Inspection
 
-Edge AI system for PCB defect detection and quality inspection using a fine-tuned YOLO object detection model.
+Edge AI system for PCB defect detection and quality inspection using a fine-tuned YOLO object detection model, FastAPI backend, NVIDIA Jetson Orin Nano deployment, and TensorRT FP16 optimization.
+
+---
 
 ## Project Overview
 
-This project develops a computer vision backend for automated PCB manufacturing defect inspection.
+This project develops an end-to-end computer vision system for automated PCB manufacturing defect inspection.
 
-A fine-tuned YOLOv8n model detects manufacturing defects in PCB images. The model predictions are then processed by a decision engine that converts raw detections into an application-level inspection result.
+A fine-tuned YOLOv8n model detects manufacturing defects in PCB images. Model predictions are processed by a decision engine that converts raw detections into an application-level inspection result.
 
 The system currently detects three PCB defect classes:
 
@@ -14,9 +16,9 @@ The system currently detects three PCB defect classes:
 - `mouse_bite`
 - `open_circuit`
 
-The backend exposes the inspection pipeline through a FastAPI service so that a frontend application can later upload PCB images and receive structured inspection results.
+The backend exposes the inspection pipeline through a FastAPI service so that a frontend application can upload PCB images and receive structured inspection results.
 
-The project is being developed with planned deployment on NVIDIA Jetson hardware.
+The complete backend has also been deployed on an NVIDIA Jetson Orin Nano Developer Kit using Docker, CUDA, and TensorRT FP16 acceleration.
 
 ---
 
@@ -25,7 +27,11 @@ The project is being developed with planned deployment on NVIDIA Jetson hardware
 ```text
 PCB Image
     ↓
+FastAPI Upload Endpoint
+    ↓
 Fine-Tuned YOLOv8n
+    ↓
+PyTorch / TensorRT Inference
     ↓
 Defect Detection
     ↓
@@ -37,16 +43,15 @@ FAIL / UNCERTAIN
     ↓
 Structured JSON Response
     ↓
-FastAPI Backend
-    ↓
 Frontend / Operator Interface
 ```
 
-The architecture separates three responsibilities:
+The architecture separates four responsibilities:
 
 1. **Perception** — detect PCB defects using YOLO.
-2. **Decision making** — convert detections into an inspection decision.
-3. **Presentation** — provide structured results to a frontend through an API.
+2. **Optimization** — accelerate inference using TensorRT on NVIDIA Jetson.
+3. **Decision making** — convert detections into inspection decisions.
+4. **Presentation** — provide structured results to a frontend through an API.
 
 ---
 
@@ -128,7 +133,7 @@ Defect-free PCB images will be needed before a reliable `PASS` decision can be v
 
 ### Baseline Model
 
-The current baseline model is:
+The detector is based on:
 
 ```text
 YOLOv8n
@@ -144,14 +149,14 @@ The model was initialized using pretrained YOLO weights and fine-tuned for the t
 | Epochs | 30 |
 | Image size | 416 × 416 |
 | Batch size | 8 |
-| Device | CPU |
+| Training device | CPU |
 | Python | 3.11 |
 | Random seed | 42 |
 | Training images | 1,938 |
 | Validation images | 115 |
 | Test images | 116 |
 
-The current development environment uses CPU-based PyTorch.
+The model was trained in the local development environment using CPU-based PyTorch.
 
 ---
 
@@ -195,13 +200,13 @@ The final validation results were:
 | mAP@0.50 | 97.7% |
 | mAP@0.50:0.95 | 58.0% |
 
-The relatively small difference between validation and held-out test performance suggests that the baseline detector generalizes well to unseen PCB defect images.
+The relatively small difference between validation and held-out test performance suggests that the detector generalizes well to unseen PCB defect images from the available dataset.
 
 ---
 
-## Backend Inference Performance
+## Local Backend Inference Performance
 
-The complete backend pipeline was benchmarked on an Intel Core i5-13420H CPU.
+The complete backend pipeline was initially benchmarked on an Intel Core i5-13420H CPU.
 
 A six-run benchmark produced:
 
@@ -225,9 +230,9 @@ Summary:
 
 The large first-request latency is caused by model and runtime warm-up.
 
-Once the model is loaded and warmed up, backend inspection runs in approximately **36–50 ms per image** on the current CPU development environment.
+Once the model is loaded and warmed up, backend inspection operates in approximately the 36–50 ms range on the development-machine CPU.
 
-The backend therefore loads the YOLO model once when the service starts rather than reloading it for each request.
+The backend loads the YOLO model once when the service starts rather than reloading it for each request.
 
 ---
 
@@ -262,6 +267,8 @@ pcb-edge-inspection/
 ├── tests/
 │   └── test_decision_engine.py
 │
+├── Dockerfile.jetson
+├── .dockerignore
 ├── requirements.txt
 ├── .gitignore
 └── README.md
@@ -269,13 +276,15 @@ pcb-edge-inspection/
 
 Dataset images are excluded from Git tracking.
 
-Generated training outputs and model weight files are also excluded from Git tracking.
+Generated training outputs and PyTorch model weight files are also excluded from Git tracking.
+
+The TensorRT engine is generated on the target Jetson device and mounted into the application container at runtime rather than being baked into the Docker image.
 
 ---
 
 ## Python Environment
 
-Recommended Python version:
+Recommended local Python version:
 
 ```text
 Python 3.11
@@ -345,7 +354,28 @@ The inference layer is implemented in:
 src/inference.py
 ```
 
-It loads the fine-tuned YOLO model and converts Ultralytics prediction objects into structured Python data.
+It loads the YOLO model and converts Ultralytics prediction objects into structured Python data.
+
+The model path and inference device can be configured using environment variables:
+
+```text
+PCB_MODEL_PATH
+PCB_DEVICE
+```
+
+The local development environment defaults to:
+
+```text
+PCB_DEVICE=cpu
+```
+
+The Jetson deployment uses:
+
+```text
+PCB_DEVICE=0
+```
+
+to explicitly select the NVIDIA GPU.
 
 Example detection:
 
@@ -460,7 +490,7 @@ Example backend result:
 
 The backend is exposed through FastAPI.
 
-Start the API from the repository root:
+Start the API locally from the repository root:
 
 ```bash
 python -m uvicorn src.api:app --reload
@@ -476,13 +506,13 @@ POST /inspect
 
 ### Health Endpoint
 
-Example:
+Request:
 
 ```text
 GET /health
 ```
 
-Response:
+Example response:
 
 ```json
 {
@@ -532,33 +562,32 @@ Example:
     {
       "class_id": 0,
       "class_name": "missing_hole",
-      "confidence": 0.7894,
+      "confidence": 0.8029,
       "bbox": [
-        213.26,
-        477.04,
-        244.02,
-        512.13
+        364.47,
+        16.64,
+        398.23,
+        50.59
       ]
     },
     {
       "class_id": 0,
       "class_name": "missing_hole",
-      "confidence": 0.7759,
+      "confidence": 0.7883,
       "bbox": [
-        546.88,
-        393.94,
-        575.51,
-        427.47
+        435.38,
+        306.82,
+        473.42,
+        340.37
       ]
     }
-  ],
-  "inference_pipeline_ms": 47.26
+  ]
 }
 ```
 
 ### Interactive API Documentation
 
-When the FastAPI server is running, Swagger documentation is available at:
+When the FastAPI server is running locally, Swagger documentation is available at:
 
 ```text
 http://127.0.0.1:8000/docs
@@ -600,6 +629,281 @@ Additional automated API and inference tests are planned.
 
 ---
 
+## NVIDIA Jetson Deployment
+
+The backend was deployed and tested on an **NVIDIA Jetson Orin Nano Developer Kit**.
+
+### Platform
+
+| Component | Configuration |
+| --- | --- |
+| Device | NVIDIA Jetson Orin Nano Developer Kit |
+| Architecture | ARM64 / aarch64 |
+| JetPack | 6.2.3 |
+| L4T | 36.5.2 |
+| Host CUDA | 12.6 |
+| Docker | NVIDIA Container Runtime enabled |
+| Container base | `nvcr.io/nvidia/pytorch:25.06-py3-igpu` |
+| Container PyTorch | `2.8.0a0+5228986c39.nv25.06` |
+| TensorRT | 10.11.0.33 |
+| Ultralytics | 8.4.184 |
+
+CUDA GPU access was verified from inside the NVIDIA container.
+
+---
+
+## Jetson Docker Image
+
+The optimized deployment image is:
+
+```text
+pcb-edge-inspection:jetson-v2
+```
+
+The image is built using:
+
+```bash
+docker build \
+  -f Dockerfile.jetson \
+  -t pcb-edge-inspection:jetson-v2 \
+  .
+```
+
+`Dockerfile.jetson` defaults to:
+
+```text
+PCB_MODEL_PATH=/models/best.engine
+PCB_DEVICE=0
+```
+
+The TensorRT engine is mounted into the container at runtime.
+
+Example deployment:
+
+```bash
+docker run --rm \
+  --runtime nvidia \
+  --ipc=host \
+  --ulimit memlock=-1 \
+  --ulimit stack=67108864 \
+  -p 8000:8000 \
+  -v /path/to/best.engine:/models/best.engine:ro \
+  --name pcb-edge-api \
+  pcb-edge-inspection:jetson-v2
+```
+
+The API is then available on:
+
+```text
+http://<jetson-ip>:8000
+```
+
+Health check:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Expected response:
+
+```json
+{
+  "status": "ok",
+  "model_loaded": true
+}
+```
+
+---
+
+## TensorRT Optimization
+
+The trained YOLOv8n PyTorch model was exported to an **FP16 TensorRT engine** directly on the Jetson Orin Nano.
+
+Export configuration:
+
+| Parameter | Value |
+| --- | --- |
+| Source model | `best.pt` |
+| Export format | TensorRT engine |
+| Precision | FP16 |
+| Image size | 416 × 416 |
+| Batch size | 1 |
+| Target device | Jetson Orin Nano GPU |
+
+The generated engine:
+
+```text
+best.engine
+```
+
+was approximately 8.7 MB.
+
+The TensorRT build was performed on the target Jetson hardware so that the engine was generated for the deployment environment.
+
+---
+
+## PyTorch vs TensorRT Prediction Validation
+
+TensorRT FP16 predictions were compared against the original PyTorch model using representative held-out images from all three defect classes.
+
+### Confidence Comparison
+
+| Defect | PyTorch | TensorRT FP16 | Difference |
+| --- | ---: | ---: | ---: |
+| `missing_hole` #1 | 0.8029 | 0.8032 | +0.0003 |
+| `missing_hole` #2 | 0.7883 | 0.7879 | -0.0004 |
+| `mouse_bite` | 0.7124 | 0.7138 | +0.0014 |
+| `open_circuit` | 0.8088 | 0.8081 | -0.0007 |
+
+All tested images retained the same predicted defect class.
+
+Bounding boxes were also nearly identical between PyTorch and TensorRT.
+
+These representative checks indicate that FP16 conversion preserved prediction behavior while significantly improving inference performance.
+
+A full held-out TensorRT evaluation remains a useful future extension if exact metric-level equivalence across the complete test set is required.
+
+---
+
+## Jetson Performance Benchmark
+
+### Raw YOLO Inference
+
+For the same representative PCB image:
+
+| Backend | Raw inference latency |
+| --- | ---: |
+| PyTorch GPU | ~20.60 ms |
+| TensorRT FP16 | ~6.65 ms |
+
+TensorRT produced approximately:
+
+```text
+3.1× faster raw model inference
+~68% lower raw inference latency
+```
+
+### End-to-End FastAPI Pipeline
+
+Ten warm API requests were measured using the same image and Jetson device.
+
+#### PyTorch GPU Backend
+
+Warm request latencies:
+
+```text
+50.45 ms
+39.63 ms
+38.63 ms
+39.90 ms
+40.22 ms
+42.68 ms
+42.69 ms
+35.08 ms
+36.22 ms
+36.45 ms
+```
+
+Average:
+
+```text
+40.20 ms
+```
+
+#### TensorRT FP16 Backend
+
+Warm request latencies:
+
+```text
+26.97 ms
+23.02 ms
+21.91 ms
+23.59 ms
+23.45 ms
+22.22 ms
+23.51 ms
+22.29 ms
+27.17 ms
+22.81 ms
+```
+
+Summary:
+
+| Measurement | TensorRT FP16 |
+| --- | ---: |
+| Average | 23.69 ms |
+| Median | 23.24 ms |
+| Fastest | 21.91 ms |
+| Slowest | 27.17 ms |
+
+### End-to-End Improvement
+
+| Backend | Average warm API latency |
+| --- | ---: |
+| Jetson PyTorch GPU | 40.20 ms |
+| Jetson TensorRT FP16 | 23.69 ms |
+
+TensorRT therefore achieved approximately:
+
+```text
+1.70× faster end-to-end backend execution
+~41% reduction in warm API latency
+```
+
+The first request after starting a fresh container incurs a substantially larger cold-start cost.
+
+Observed cold requests were approximately:
+
+```text
+PyTorch API:   ~3.45 s
+TensorRT API:  ~2.82 s
+```
+
+Warm-request latency is therefore the more representative measurement for a continuously running inspection service.
+
+---
+
+## Deployment Validation
+
+The final `jetson-v2` deployment was validated end-to-end using the TensorRT FP16 engine.
+
+Example held-out `open_circuit` response:
+
+```json
+{
+  "image": "l_light_01_open_circuit_14_2_600_jpg.rf.bc80119d8c20aba52ac90da53dd40e0d.jpg",
+  "image_width": 600,
+  "image_height": 600,
+  "status": "FAIL",
+  "reason": "Reliable defect detection(s): open_circuit",
+  "defect_count": 1,
+  "detections": [
+    {
+      "class_id": 2,
+      "class_name": "open_circuit",
+      "confidence": 0.8081,
+      "bbox": [
+        470.76,
+        123.37,
+        485.29,
+        140.52
+      ]
+    }
+  ],
+  "inference_pipeline_ms": 2826.61
+}
+```
+
+The latency shown above corresponds to the first cold request after container startup. Warm TensorRT requests operate around the benchmarked 23.69 ms average.
+
+Representative held-out examples of all three classes were successfully processed through the optimized deployment:
+
+- `missing_hole`
+- `mouse_bite`
+- `open_circuit`
+
+---
+
 ## Backend Progress
 
 - [x] GitHub repository created
@@ -612,65 +916,42 @@ Additional automated API and inference tests are planned.
 - [x] dataset configuration verified
 - [x] YOLO inference smoke test completed
 - [x] one-epoch training dry run completed
-- [x] full YOLOv8n baseline training completed
+- [x] full YOLOv8n training completed
 - [x] held-out baseline evaluation completed
 - [x] production inference module
+- [x] configurable inference device
 - [x] decision engine
 - [x] structured backend response
-- [x] backend API/interface
+- [x] FastAPI backend interface
 - [x] invalid upload handling
 - [x] basic decision-engine tests
-- [x] backend latency benchmark
+- [x] local backend latency benchmark
+- [x] NVIDIA Jetson environment verified
+- [x] Docker deployment created
+- [x] YOLO model deployed on Jetson GPU
+- [x] TensorRT FP16 model export
+- [x] PyTorch vs TensorRT comparison
+- [x] Jetson API latency benchmark
+- [x] three-class TensorRT prediction validation
+- [x] final TensorRT FastAPI deployment
 - [ ] automated API tests
 - [ ] defect-free PCB validation
-- [ ] NVIDIA Jetson deployment
 - [ ] frontend integration
-
----
-
-## Docker
-
-Docker container image:
-
-```text
-TBD
-```
-
-The deployment container will be selected after the NVIDIA Jetson runtime requirements are finalized.
-
-The final repository documentation will include the exact Docker container image used for deployment.
-
----
-
-## Planned Edge Deployment
-
-The trained model will later be deployed on NVIDIA Jetson hardware.
-
-Planned deployment work includes:
-
-- Jetson environment verification
-- model transfer
-- Jetson inference testing
-- latency benchmarking
-- FPS measurement
-- possible TensorRT optimization
-- integration with the existing backend
-- comparison between development-machine and Jetson performance
 
 ---
 
 ## Current Status
 
-The baseline computer vision model has been successfully trained and evaluated.
-
-The core backend pipeline is also operational:
+The complete backend and edge-deployment pipeline is operational:
 
 ```text
-Image Upload
+PCB Image
     ↓
 FastAPI
     ↓
-YOLOv8n Inference
+YOLOv8n TensorRT FP16
+    ↓
+NVIDIA Jetson Orin Nano GPU
     ↓
 Structured Defect Detection
     ↓
@@ -681,14 +962,62 @@ FAIL / UNCERTAIN
 JSON Response
 ```
 
-The backend currently provides:
+The project currently provides:
 
-- trained PCB defect detector
-- structured inference results
-- inspection decision logic
-- API-based image upload
-- input validation
-- backend latency measurement
-- interactive Swagger documentation
+- fine-tuned PCB defect detection
+- three supported defect classes
+- held-out model evaluation
+- structured bounding-box and confidence output
+- conservative quality-inspection decision logic
+- FastAPI image-upload service
+- upload validation
+- latency measurement
+- interactive Swagger API documentation
+- Docker-based Jetson deployment
+- explicit NVIDIA GPU selection
+- TensorRT FP16 acceleration
+- PyTorch vs TensorRT performance comparison
+- representative TensorRT validation across all three classes
 
-The next development stages are automated API testing, NVIDIA Jetson deployment, and frontend integration.
+The Jetson deployment reduced average warm end-to-end backend latency from approximately **40.20 ms with PyTorch GPU inference to 23.69 ms with TensorRT FP16**, while preserving nearly identical predictions on the representative held-out samples tested.
+
+---
+
+## Remaining Work
+
+The primary remaining development tasks are:
+
+1. Build the frontend/operator interface.
+2. Integrate the frontend with the `/inspect` FastAPI endpoint.
+3. Add automated API tests.
+4. Add verified defect-free PCB images so that a scientifically supported `PASS` decision can be introduced.
+5. Optionally evaluate the TensorRT engine across the complete held-out test set.
+6. Extend performance analysis with additional edge metrics if needed, such as sustained throughput, power consumption, and resource utilization.
+
+---
+
+## Key Result
+
+The project demonstrates an end-to-end edge AI workflow:
+
+```text
+Dataset
+    ↓
+YOLO Fine-Tuning
+    ↓
+Held-Out Evaluation
+    ↓
+Inspection Decision Engine
+    ↓
+FastAPI Backend
+    ↓
+Docker Deployment
+    ↓
+NVIDIA Jetson Orin Nano
+    ↓
+TensorRT FP16 Optimization
+    ↓
+Low-Latency Edge Inference
+```
+
+The final optimized Jetson backend achieved approximately **23.69 ms average warm end-to-end inference pipeline latency**, compared with **40.20 ms using the PyTorch GPU backend**, while maintaining effectively equivalent predictions on representative held-out examples from all three PCB defect classes.
