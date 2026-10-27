@@ -2,6 +2,14 @@
 
 Edge AI system for PCB defect detection and quality inspection using a fine-tuned YOLO object detection model, FastAPI backend, NVIDIA Jetson Orin Nano deployment, and TensorRT FP16 optimization.
 
+<p align="center">
+  <img src="git_assets/system_architecture.png" alt="PCB Edge Inspection System Architecture" width="100%">
+</p>
+
+<p align="center">
+  <em>End-to-end PCB defect inspection pipeline with image upload, live camera input, FastAPI, YOLOv8n, TensorRT FP16, and NVIDIA Jetson Orin Nano deployment.</em>
+</p>
+
 ---
 
 ## Project Overview
@@ -53,6 +61,17 @@ The architecture separates four responsibilities:
 3. **Decision making** — convert detections into inspection decisions.
 4. **Presentation** — provide structured results to a frontend through an API.
 
+## Demo
+
+The following demo shows the trained PCB defect detector processing representative held-out test images and returning defect classifications, confidence scores, and inspection decisions.
+
+<p align="center">
+  <img src="git_assets/pcb_detection_demo.gif" alt="PCB Defect Detection Demo" width="80%">
+</p>
+
+<p align="center">
+  <em>YOLOv8n PCB defect detection on held-out examples for missing_hole, mouse_bite, and open_circuit.</em>
+</p>
 ---
 
 ## Dataset
@@ -174,6 +193,18 @@ The test set contained **248 labeled defect instances**.
 | Recall | **95.7%** |
 | mAP@0.50 | **96.6%** |
 | mAP@0.50:0.95 | **54.9%** |
+
+### Example Held-Out Test Detections
+
+The following examples show predictions from the trained YOLOv8n model on representative held-out test images from all three defect classes.
+
+<p align="center">
+  <img src="git_assets/sample_detections.png" alt="PCB Defect Detection Examples" width="100%">
+</p>
+
+<p align="center">
+  <em>Representative detections for missing_hole, mouse_bite, and open_circuit from the held-out test set.</em>
+</p>
 
 ### Per-Class Test Results
 
@@ -842,6 +873,16 @@ Summary:
 | --- | ---: |
 | Jetson PyTorch GPU | 40.20 ms |
 | Jetson TensorRT FP16 | 23.69 ms |
+
+### Performance Visualization
+
+<p align="center">
+  <img src="git_assets/latency_comparison.png" alt="PyTorch vs TensorRT latency comparison on NVIDIA Jetson Orin Nano" width="85%">
+</p>
+
+<p align="center">
+  <em>TensorRT FP16 reduced raw inference latency by approximately 68% and warm end-to-end API latency by approximately 41%.</em>
+</p>
 
 TensorRT therefore achieved approximately:
 
