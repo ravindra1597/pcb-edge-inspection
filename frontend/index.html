@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>PCB Edge Inspection</title>
+
+    <link
+        rel="stylesheet"
+        href="/static/styles.css"
+    >
+</head>
+
+<body>
+
+    <div class="app-shell">
+
+        <!-- =========================
+             TOP HEADER
+        ========================== -->
+        <header class="topbar">
+
+            <div class="brand">
+
+                <div class="brand-mark">
+                    <span>PCB</span>
+                </div>
+
+                <div class="brand-copy">
+                    <h1>PCB Edge Inspection</h1>
+                    <p>AI-powered manufacturing quality inspection</p>
+                </div>
+
+            </div>
+
+            <div class="system-status">
+
+                <div class="status-item">
+                    <span class="status-dot online"></span>
+
+                    <div>
+                        <span class="status-label">
+                            Edge Device
+                        </span>
+
+                        <strong>
+                            Jetson Orin Nano
+                        </strong>
+                    </div>
+                </div>
+
+                <div class="status-item">
+                    <span class="status-dot online"></span>
+
+                    <div>
+                        <span class="status-label">
+                            Inference Engine
+                        </span>
+
+                        <strong>
+                            TensorRT FP16
+                        </strong>
+                    </div>
+                </div>
+
+            </div>
+
+        </header>
+
+
+        <!-- =========================
+             MAIN WORKSPACE
+        ========================== -->
+        <main class="workspace">
+
+            <!-- LEFT: INSPECTION WORKSPACE -->
+            <section class="inspection-panel">
+
+                <div class="panel-header">
+
+                    <div>
+                        <p class="eyebrow">
+                            Inspection workspace
+                        </p>
+
+                        <h2>
+                            Inspect PCB
+                        </h2>
+                    </div>
+
+                    <div class="mode-switch">
+
+                        <button
+                            id="uploadModeButton"
+                            class="mode-button active"
+                            type="button"
+                        >
+                            Upload Image
+                        </button>
+
+                        <button
+                            id="cameraModeButton"
+                            class="mode-button"
+                            type="button"
+                        >
+                            Live Camera
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <!-- IMAGE / CAMERA VIEWPORT -->
+                <div class="inspection-stage">
+
+                    <!-- Upload mode -->
+                    <div
+                        id="uploadView"
+                        class="stage-view active"
+                    >
+
+                        <div
+                            id="dropZone"
+                            class="upload-zone"
+                        >
+
+                            <div class="upload-icon">
+                                ↑
+                            </div>
+
+                            <h3>
+                                Drop a PCB image here
+                            </h3>
+
+                            <p>
+                                Drag and drop an image or browse
+                                your device.
+                            </p>
+
+                            <button
+                                id="browseButton"
+                                class="primary-button"
+                                type="button"
+                            >
+                                Choose PCB Image
+                            </button>
+
+                            <input
+                                id="fileInput"
+                                type="file"
+                                accept=".jpg,.jpeg,.png,.bmp"
+                                hidden
+                            >
+
+                            <span class="file-hint">
+                                JPG, JPEG, PNG or BMP
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- Camera mode -->
+                    <div
+                        id="cameraView"
+                        class="stage-view"
+                    >
+
+                        <div class="camera-placeholder">
+
+                            <div class="camera-icon">
+                                ◉
+                            </div>
+
+                            <h3>
+                                Jetson Camera
+                            </h3>
+
+                            <p>
+                                Live camera preview will appear here.
+                            </p>
+
+                            <div class="camera-device">
+                                Logitech C270 HD Webcam
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- Image preview / detection overlay -->
+                    <div
+                        id="previewContainer"
+                        class="preview-container hidden"
+                    >
+
+                        <img
+                            id="pcbPreview"
+                            alt="PCB inspection preview"
+                        >
+
+                        <canvas
+                            id="detectionCanvas"
+                        ></canvas>
+
+                    </div>
+
+                </div>
+
+
+                <!-- ACTION BAR -->
+                <div class="action-bar">
+
+                    <div class="action-group">
+
+                        <button
+                            id="uploadActionButton"
+                            class="secondary-button"
+                            type="button"
+                        >
+                            Upload PCB
+                        </button>
+
+                        <button
+                            id="captureButton"
+                            class="secondary-button"
+                            type="button"
+                            disabled
+                        >
+                            Capture Frame
+                        </button>
+
+                    </div>
+
+                    <button
+                        id="inspectButton"
+                        class="inspect-button"
+                        type="button"
+                        disabled
+                    >
+                        Inspect PCB
+                    </button>
+
+                    <button
+                        id="liveInspectionButton"
+                        class="secondary-button"
+                        type="button"
+                        disabled
+                    >
+                        Start Live Inspection
+                    </button>
+
+                </div>
+
+            </section>
+
+
+            <!-- RIGHT: RESULTS -->
+            <aside class="results-panel">
+
+                <!-- INSPECTION RESULT -->
+                <section class="result-card">
+
+                    <div class="card-heading">
+
+                        <div>
+                            <p class="eyebrow">
+                                Inspection result
+                            </p>
+
+                            <h2>
+                                Current Result
+                            </h2>
+                        </div>
+
+                        <span
+                            id="inspectionBadge"
+                            class="result-badge idle"
+                        >
+                            READY
+                        </span>
+
+                    </div>
+
+
+                    <div
+                        id="resultEmptyState"
+                        class="result-empty-state"
+                    >
+
+                        <div class="result-placeholder-icon">
+                            ✓
+                        </div>
+
+                        <h3>
+                            Ready for inspection
+                        </h3>
+
+                        <p>
+                            Upload a PCB image or use the Jetson
+                            camera to begin.
+                        </p>
+
+                    </div>
+
+
+                    <div
+                        id="resultContent"
+                        class="result-content hidden"
+                    >
+
+                        <div class="summary-row">
+
+                            <span>
+                                Detected defects
+                            </span>
+
+                            <strong id="defectCount">
+                                0
+                            </strong>
+
+                        </div>
+
+
+                        <div
+                            id="detectionsList"
+                            class="detections-list"
+                        >
+                        </div>
+
+
+                        <div class="decision-reason">
+
+                            <span>
+                                Decision
+                            </span>
+
+                            <p id="decisionReason">
+                                —
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+
+                <!-- EDGE PERFORMANCE -->
+                <section class="performance-card">
+
+                    <div class="card-heading">
+
+                        <div>
+                            <p class="eyebrow">
+                                Edge performance
+                            </p>
+
+                            <h2>
+                                Runtime
+                            </h2>
+                        </div>
+
+                        <span class="performance-chip">
+                            EDGE AI
+                        </span>
+
+                    </div>
+
+
+                    <div class="performance-grid">
+
+                        <div class="metric">
+
+                            <span>
+                                Device
+                            </span>
+
+                            <strong>
+                                Jetson Orin Nano
+                            </strong>
+
+                        </div>
+
+
+                        <div class="metric">
+
+                            <span>
+                                Engine
+                            </span>
+
+                            <strong>
+                                TensorRT FP16
+                            </strong>
+
+                        </div>
+
+
+                        <div class="metric">
+
+                            <span>
+                                Pipeline latency
+                            </span>
+
+                            <strong id="pipelineLatency">
+                                —
+                            </strong>
+
+                        </div>
+
+
+                        <div class="metric">
+
+                            <span>
+                                Model
+                            </span>
+
+                            <strong>
+                                YOLOv8n
+                            </strong>
+
+                        </div>
+
+
+                        <div class="metric">
+
+                            <span>
+                                Input size
+                            </span>
+
+                            <strong>
+                                416 × 416
+                            </strong>
+
+                        </div>
+
+
+                        <div class="metric">
+
+                            <span>
+                                API status
+                            </span>
+
+                            <strong
+                                id="apiStatus"
+                                class="api-status"
+                            >
+                                Checking…
+                            </strong>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+
+                <!-- RESEARCH EXPANSION PLACEHOLDER -->
+                <section class="research-card">
+
+                    <div>
+
+                        <p class="eyebrow">
+                            Research layer
+                        </p>
+
+                        <h3>
+                            Performance Analysis
+                        </h3>
+
+                        <p>
+                            Runtime metrics and experimental
+                            comparisons can be expanded here
+                            without changing the operator workflow.
+                        </p>
+
+                    </div>
+
+                    <span class="research-tag">
+                        EXPERIMENTAL
+                    </span>
+
+                </section>
+
+            </aside>
+
+        </main>
+
+
+        <!-- =========================
+             FOOTER
+        ========================== -->
+        <footer class="footer">
+
+            <span>
+                PCB Edge Inspection
+            </span>
+
+            <span>
+                YOLOv8n · TensorRT FP16 · NVIDIA Jetson Orin Nano
+            </span>
+
+        </footer>
+
+    </div>
+
+
+    <script src="/static/app.js"></script>
+
+</body>
+</html>

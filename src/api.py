@@ -1,4 +1,9 @@
 from pathlib import Path
+
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+from pathlib import Path
 import shutil
 import tempfile
 
@@ -13,15 +18,23 @@ app = FastAPI(
     version="1.0.0",
 )
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+FRONTEND_DIR = BASE_DIR / "frontend"
+
+app.mount(
+    "/static",
+    StaticFiles(directory=FRONTEND_DIR),
+    name="static",
+)
 # Load model once when the API process starts.
 backend = PCBInspectionBackend()
 
 
 @app.get("/")
 def root():
-    return {
-        "message": "PCB Edge Inspection API is running."
-    }
+    return FileResponse(
+        FRONTEND_DIR / "index.html"
+    )
 
 
 @app.get("/health")
