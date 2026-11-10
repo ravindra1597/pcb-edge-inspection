@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .backend import PCBInspectionBackend
 from .camera import CameraService
+from .runtime_info import get_runtime_info
 
 
 # The camera is opened lazily on first use, so the API still starts
@@ -41,6 +42,12 @@ app.mount(
 # Load model once when the API process starts.
 backend = PCBInspectionBackend()
 
+# What the backend is actually running on (static for the process).
+RUNTIME_INFO = get_runtime_info(
+    backend.detector.model_path,
+    backend.detector.device,
+)
+
 
 @app.get("/")
 def root():
@@ -55,6 +62,12 @@ def health():
         "status": "ok",
         "model_loaded": True,
     }
+
+
+@app.get("/runtime")
+def runtime():
+    """Device, engine, precision and input size the backend is running."""
+    return RUNTIME_INFO
 
 
 # ---------------------------------------------------------------

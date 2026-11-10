@@ -1002,6 +1002,73 @@ captureButton.addEventListener(
 
 
 /* ========================================
+   RUNTIME INFO
+======================================== */
+
+async function loadRuntimeInfo() {
+    const setText = (id, value) => {
+        const element =
+            document.getElementById(id);
+
+        if (element) {
+            element.textContent = value;
+        }
+    };
+
+    try {
+        const response =
+            await fetch("/runtime");
+
+        if (!response.ok) {
+            throw new Error(
+                "Runtime endpoint returned an error."
+            );
+        }
+
+        const info =
+            await response.json();
+
+        const engineLabel =
+            [info.engine, info.precision]
+                .filter(Boolean)
+                .join(" ") || "—";
+
+        const inputSize =
+            Array.isArray(info.input_size)
+                ? `${info.input_size[0]} × ${info.input_size[1]}`
+                : "—";
+
+        const device =
+            info.device || "—";
+
+        const model =
+            info.model || "—";
+
+        setText("headerDevice", device);
+        setText("headerEngine", engineLabel);
+
+        setText("runtimeDevice", device);
+        setText("runtimeEngine", engineLabel);
+        setText("runtimeModel", model);
+        setText("runtimeInput", inputSize);
+
+        setText(
+            "footerRuntime",
+            [
+                model,
+                engineLabel,
+                info.device_detail || device
+            ].join(" · ")
+        );
+
+    } catch {
+        // Keep the "—" placeholders. An unknown value is better
+        // than a label that might be wrong.
+    }
+}
+
+
+/* ========================================
    RESET RESULT PANEL
 ======================================== */
 
@@ -1027,3 +1094,4 @@ function resetResultPanel() {
 setMode("upload");
 
 checkApiHealth();
+loadRuntimeInfo();
