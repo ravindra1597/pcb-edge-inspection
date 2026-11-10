@@ -37,9 +37,23 @@ const captureButton =
 const liveInspectionButton =
     document.getElementById("liveInspectionButton");
 
+const cameraFeed =
+    document.getElementById("cameraFeed");
+
+const cameraPlaceholder =
+    document.getElementById("cameraPlaceholder");
+
+const cameraTitle =
+    document.getElementById("cameraTitle");
+
+const cameraMessage =
+    document.getElementById("cameraMessage");
+
 
 let currentMode = "upload";
 let selectedFile = null;
+let cameraFrozen = false;
+let lastDrawArgs = null;
 
 
 /* ========================================
@@ -48,6 +62,8 @@ let selectedFile = null;
 
 function setMode(mode) {
     currentMode = mode;
+
+    resetResultPanel();
 
     const uploadActive =
         mode === "upload";
@@ -73,6 +89,8 @@ function setMode(mode) {
     );
 
     if (uploadActive) {
+        stopCameraPreview();
+
         captureButton.disabled = true;
         liveInspectionButton.disabled = true;
 
@@ -98,12 +116,12 @@ function setMode(mode) {
         inspectButton.disabled = true;
 
         /*
-         * Camera controls remain disabled for now.
-         * They will be enabled once the Jetson camera
-         * backend is connected.
+         * Live inspection is a later phase and stays disabled.
+         * Capture Frame is enabled by startCameraPreview().
          */
-        captureButton.disabled = true;
         liveInspectionButton.disabled = true;
+
+        startCameraPreview();
     }
 }
 
@@ -223,6 +241,8 @@ function loadSelectedFile(file) {
 
     selectedFile = file;
 
+    resetResultPanel();
+
     const reader =
         new FileReader();
 
@@ -240,12 +260,6 @@ function loadSelectedFile(file) {
     reader.readAsDataURL(file);
 }
 
-
-/* ========================================
-   INITIAL STATE
-======================================== */
-
-setMode("upload");
 
 /* ========================================
    API HEALTH
@@ -583,6 +597,12 @@ function drawDetections(
     sourceWidth,
     sourceHeight
 ) {
+    lastDrawArgs = [
+        detections,
+        sourceWidth,
+        sourceHeight
+    ];
+
     if (!pcbPreview.complete) {
         pcbPreview.onload = () => {
             drawDetections(
@@ -630,65 +650,25 @@ function drawDetections(
 
 
     /*
-     * The image uses object-fit: contain.
-     * Calculate its actual displayed size
-     * inside the preview area.
+     * Use the image's actual rendered rectangle. The CSS only caps
+     * the image size (max-width / max-height) and never enlarges it,
+     * so a small image is shown at its natural size rather than
+     * stretched to fill the container.
      */
-
-    const imageAspect =
-        sourceWidth /
-        sourceHeight;
-
-    const containerAspect =
-        containerWidth /
-        containerHeight;
-
-
-    let displayedWidth;
-    let displayedHeight;
-
-
-    if (
-        imageAspect >
-        containerAspect
-    ) {
-        displayedWidth =
-            containerWidth;
-
-        displayedHeight =
-            containerWidth /
-            imageAspect;
-
-    } else {
-        displayedHeight =
-            containerHeight;
-
-        displayedWidth =
-            containerHeight *
-            imageAspect;
-    }
-
+    const imageRect =
+        pcbPreview.getBoundingClientRect();
 
     const offsetX =
-        (
-            containerWidth -
-            displayedWidth
-        ) / 2;
+        imageRect.left - containerRect.left;
 
     const offsetY =
-        (
-            containerHeight -
-            displayedHeight
-        ) / 2;
-
+        imageRect.top - containerRect.top;
 
     const scaleX =
-        displayedWidth /
-        sourceWidth;
+        imageRect.width / sourceWidth;
 
     const scaleY =
-        displayedHeight /
-        sourceHeight;
+        imageRect.height / sourceHeight;
 
 
     detections.forEach(
@@ -845,13 +825,205 @@ function displayInspectionError(message) {
 window.addEventListener(
     "resize",
     () => {
-        clearDetectionCanvas();
+        const previewVisible =
+            !previewContainer.classList.contains(
+                "hidden"
+            );
+
+        if (lastDrawArgs && previewVisible) {
+            drawDetections(...lastDrawArgs);
+        } else {
+            clearDetectionCanvas();
+        }
     }
 );
 
 
 /* ========================================
-   INITIAL API CHECK
+   LIVE CAMERA
 ======================================== */
+
+function startCameraPreview() {
+    cameraFrozen = false;
+
+    captureButton.textContent = "Capture Frame";
+    captureButton.disabled = false;
+
+    cameraTitle.textContent = "Jetson Camera";
+    cameraMessage.textContent =
+        "Live camera preview will appear here.";
+
+    cameraPlaceholder.classList.add("hidden");
+    cameraFeed.classList.remove("hidden");
+
+    // Cache-busting query so the browser opens a fresh stream.
+    cameraFeed.src = `/camera/stream?t=${Date.now()}`;
+}
+
+
+function stopCameraPreview() {
+    // Removing src closes the stream connection to the Jetson.
+    cameraFeed.removeAttribute("src");
+    cameraFeed.classList.add("hidden");
+
+    cameraPlaceholder.classList.remove("hidden");
+
+    cameraFrozen = false;
+    captureButton.textContent = "Capture Frame";
+}
+
+
+async function showCameraUnavailable() {
+    let message =
+        "Camera unavailable. Check that the camera is connected.";
+
+    try {
+        const response =
+            await fetch("/camera/status");
+
+        const status =
+            await response.json();
+
+        if (status.error) {
+            message = status.error;
+        }
+    } catch {
+        // Keep the default message.
+    }
+
+    cameraFeed.removeAttribute("src");
+    cameraFeed.classList.add("hidden");
+
+    cameraTitle.textContent =
+        "Camera unavailable";
+
+    cameraMessage.textContent =
+        message;
+
+    cameraPlaceholder.classList.remove("hidden");
+
+    captureButton.disabled = true;
+}
+
+
+cameraFeed.addEventListener(
+    "error",
+    () => {
+        if (currentMode === "camera" && !cameraFrozen) {
+            showCameraUnavailable();
+        }
+    }
+);
+
+
+function resumeLiveCamera() {
+    selectedFile = null;
+
+    previewContainer.classList.add("hidden");
+    inspectButton.disabled = true;
+
+    resetResultPanel();
+
+    startCameraPreview();
+}
+
+
+async function handleCaptureClick() {
+    if (cameraFrozen) {
+        resumeLiveCamera();
+        return;
+    }
+
+    captureButton.disabled = true;
+    captureButton.textContent = "Capturing…";
+
+    try {
+        const response =
+            await fetch(
+                "/camera/snapshot",
+                { cache: "no-store" }
+            );
+
+        if (!response.ok) {
+            let message =
+                "Could not capture a frame.";
+
+            try {
+                const errorData =
+                    await response.json();
+
+                if (errorData.detail) {
+                    message = errorData.detail;
+                }
+            } catch {
+                // Keep default message.
+            }
+
+            throw new Error(message);
+        }
+
+        const blob =
+            await response.blob();
+
+        const stamp =
+            new Date()
+                .toISOString()
+                .replace(/[:.]/g, "-");
+
+        const file =
+            new File(
+                [blob],
+                `camera_${stamp}.jpg`,
+                { type: "image/jpeg" }
+            );
+
+        // Same path as an uploaded image: preview, then Inspect.
+        loadSelectedFile(file);
+
+        // Freeze: stop the live stream and offer a way back.
+        cameraFeed.removeAttribute("src");
+        cameraFrozen = true;
+        captureButton.textContent = "Resume Live";
+
+    } catch (error) {
+        captureButton.textContent = "Capture Frame";
+        displayInspectionError(error.message);
+
+    } finally {
+        captureButton.disabled = false;
+    }
+}
+
+
+captureButton.addEventListener(
+    "click",
+    handleCaptureClick
+);
+
+
+/* ========================================
+   RESET RESULT PANEL
+======================================== */
+
+function resetResultPanel() {
+    resultContent.classList.add("hidden");
+    resultEmptyState.classList.remove("hidden");
+
+    inspectionBadge.textContent = "READY";
+    inspectionBadge.className = "result-badge idle";
+
+    detectionsList.innerHTML = "";
+
+    lastDrawArgs = null;
+
+    clearDetectionCanvas();
+}
+
+
+/* ========================================
+   INITIAL STATE
+======================================== */
+
+setMode("upload");
 
 checkApiHealth();

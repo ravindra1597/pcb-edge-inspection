@@ -1,0 +1,335 @@
+diff --git a/frontend/app.js b/frontend/app.js
+index 5ab66bf..ad1e94d 100644
+--- a/frontend/app.js
++++ b/frontend/app.js
+@@ -37,9 +37,22 @@ const captureButton =
+ const liveInspectionButton =
+     document.getElementById("liveInspectionButton");
+ 
++const cameraFeed =
++    document.getElementById("cameraFeed");
++
++const cameraPlaceholder =
++    document.getElementById("cameraPlaceholder");
++
++const cameraTitle =
++    document.getElementById("cameraTitle");
++
++const cameraMessage =
++    document.getElementById("cameraMessage");
++
+ 
+ let currentMode = "upload";
+ let selectedFile = null;
++let cameraFrozen = false;
+ 
+ 
+ /* ========================================
+@@ -49,6 +62,8 @@ let selectedFile = null;
+ function setMode(mode) {
+     currentMode = mode;
+ 
++    resetResultPanel();
++
+     const uploadActive =
+         mode === "upload";
+ 
+@@ -73,6 +88,8 @@ function setMode(mode) {
+     );
+ 
+     if (uploadActive) {
++        stopCameraPreview();
++
+         captureButton.disabled = true;
+         liveInspectionButton.disabled = true;
+ 
+@@ -98,12 +115,12 @@ function setMode(mode) {
+         inspectButton.disabled = true;
+ 
+         /*
+-         * Camera controls remain disabled for now.
+-         * They will be enabled once the Jetson camera
+-         * backend is connected.
++         * Live inspection is a later phase and stays disabled.
++         * Capture Frame is enabled by startCameraPreview().
+          */
+-        captureButton.disabled = true;
+         liveInspectionButton.disabled = true;
++
++        startCameraPreview();
+     }
+ }
+ 
+@@ -223,6 +240,8 @@ function loadSelectedFile(file) {
+ 
+     selectedFile = file;
+ 
++    resetResultPanel();
++
+     const reader =
+         new FileReader();
+ 
+@@ -241,12 +260,6 @@ function loadSelectedFile(file) {
+ }
+ 
+ 
+-/* ========================================
+-   INITIAL STATE
+-======================================== */
+-
+-setMode("upload");
+-
+ /* ========================================
+    API HEALTH
+ ======================================== */
+@@ -851,7 +864,188 @@ window.addEventListener(
+ 
+ 
+ /* ========================================
+-   INITIAL API CHECK
++   LIVE CAMERA
++======================================== */
++
++function startCameraPreview() {
++    cameraFrozen = false;
++
++    captureButton.textContent = "Capture Frame";
++    captureButton.disabled = false;
++
++    cameraTitle.textContent = "Jetson Camera";
++    cameraMessage.textContent =
++        "Live camera preview will appear here.";
++
++    cameraPlaceholder.classList.add("hidden");
++    cameraFeed.classList.remove("hidden");
++
++    // Cache-busting query so the browser opens a fresh stream.
++    cameraFeed.src = `/camera/stream?t=${Date.now()}`;
++}
++
++
++function stopCameraPreview() {
++    // Removing src closes the stream connection to the Jetson.
++    cameraFeed.removeAttribute("src");
++    cameraFeed.classList.add("hidden");
++
++    cameraPlaceholder.classList.remove("hidden");
++
++    cameraFrozen = false;
++    captureButton.textContent = "Capture Frame";
++}
++
++
++async function showCameraUnavailable() {
++    let message =
++        "Camera unavailable. Check that the camera is connected.";
++
++    try {
++        const response =
++            await fetch("/camera/status");
++
++        const status =
++            await response.json();
++
++        if (status.error) {
++            message = status.error;
++        }
++    } catch {
++        // Keep the default message.
++    }
++
++    cameraFeed.removeAttribute("src");
++    cameraFeed.classList.add("hidden");
++
++    cameraTitle.textContent =
++        "Camera unavailable";
++
++    cameraMessage.textContent =
++        message;
++
++    cameraPlaceholder.classList.remove("hidden");
++
++    captureButton.disabled = true;
++}
++
++
++cameraFeed.addEventListener(
++    "error",
++    () => {
++        if (currentMode === "camera" && !cameraFrozen) {
++            showCameraUnavailable();
++        }
++    }
++);
++
++
++function resumeLiveCamera() {
++    selectedFile = null;
++
++    previewContainer.classList.add("hidden");
++    inspectButton.disabled = true;
++
++    resetResultPanel();
++
++    startCameraPreview();
++}
++
++
++async function handleCaptureClick() {
++    if (cameraFrozen) {
++        resumeLiveCamera();
++        return;
++    }
++
++    captureButton.disabled = true;
++    captureButton.textContent = "Capturing…";
++
++    try {
++        const response =
++            await fetch(
++                "/camera/snapshot",
++                { cache: "no-store" }
++            );
++
++        if (!response.ok) {
++            let message =
++                "Could not capture a frame.";
++
++            try {
++                const errorData =
++                    await response.json();
++
++                if (errorData.detail) {
++                    message = errorData.detail;
++                }
++            } catch {
++                // Keep default message.
++            }
++
++            throw new Error(message);
++        }
++
++        const blob =
++            await response.blob();
++
++        const stamp =
++            new Date()
++                .toISOString()
++                .replace(/[:.]/g, "-");
++
++        const file =
++            new File(
++                [blob],
++                `camera_${stamp}.jpg`,
++                { type: "image/jpeg" }
++            );
++
++        // Same path as an uploaded image: preview, then Inspect.
++        loadSelectedFile(file);
++
++        // Freeze: stop the live stream and offer a way back.
++        cameraFeed.removeAttribute("src");
++        cameraFrozen = true;
++        captureButton.textContent = "Resume Live";
++
++    } catch (error) {
++        captureButton.textContent = "Capture Frame";
++        displayInspectionError(error.message);
++
++    } finally {
++        captureButton.disabled = false;
++    }
++}
++
++
++captureButton.addEventListener(
++    "click",
++    handleCaptureClick
++);
++
++
++/* ========================================
++   RESET RESULT PANEL
+ ======================================== */
+ 
++function resetResultPanel() {
++    resultContent.classList.add("hidden");
++    resultEmptyState.classList.remove("hidden");
++
++    inspectionBadge.textContent = "READY";
++    inspectionBadge.className = "result-badge idle";
++
++    detectionsList.innerHTML = "";
++
++    clearDetectionCanvas();
++}
++
++
++/* ========================================
++   INITIAL STATE
++======================================== */
++
++setMode("upload");
++
+ checkApiHealth();
+\ No newline at end of file
+diff --git a/frontend/index.html b/frontend/index.html
+index ec2b223..3eeedde 100644
+--- a/frontend/index.html
++++ b/frontend/index.html
+@@ -172,17 +172,26 @@
+                         class="stage-view"
+                     >
+ 
+-                        <div class="camera-placeholder">
++                        <img
++                            id="cameraFeed"
++                            class="camera-feed hidden"
++                            alt="Live camera preview"
++                        >
++
++                        <div
++                            id="cameraPlaceholder"
++                            class="camera-placeholder"
++                        >
+ 
+                             <div class="camera-icon">
+                                 ◉
+                             </div>
+ 
+-                            <h3>
++                            <h3 id="cameraTitle">
+                                 Jetson Camera
+                             </h3>
+ 
+-                            <p>
++                            <p id="cameraMessage">
+                                 Live camera preview will appear here.
+                             </p>
+ 
+diff --git a/frontend/styles.css b/frontend/styles.css
+index 63f36ee..0946833 100644
+--- a/frontend/styles.css
++++ b/frontend/styles.css
+@@ -1182,4 +1182,19 @@ button:disabled {
+ 
+     background:
+         rgba(234, 240, 255, 0.9);
+-}
+\ No newline at end of file
++}
++
++
++/* ========================================
++   LIVE CAMERA FEED
++======================================== */
++
++.camera-feed {
++    width: 100%;
++    height: 100%;
++    min-height: 500px;
++
++    object-fit: contain;
++
++    background: #111827;
++}

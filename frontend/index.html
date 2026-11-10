@@ -172,17 +172,26 @@
                         class="stage-view"
                     >
 
-                        <div class="camera-placeholder">
+                        <img
+                            id="cameraFeed"
+                            class="camera-feed hidden"
+                            alt="Live camera preview"
+                        >
+
+                        <div
+                            id="cameraPlaceholder"
+                            class="camera-placeholder"
+                        >
 
                             <div class="camera-icon">
                                 ◉
                             </div>
 
-                            <h3>
+                            <h3 id="cameraTitle">
                                 Jetson Camera
                             </h3>
 
-                            <p>
+                            <p id="cameraMessage">
                                 Live camera preview will appear here.
                             </p>
 

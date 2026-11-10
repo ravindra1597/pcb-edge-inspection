@@ -1,0 +1,128 @@
+diff --git a/frontend/app.js b/frontend/app.js
+index ad1e94d..ecc178c 100644
+--- a/frontend/app.js
++++ b/frontend/app.js
+@@ -53,6 +53,7 @@ const cameraMessage =
+ let currentMode = "upload";
+ let selectedFile = null;
+ let cameraFrozen = false;
++let lastDrawArgs = null;
+ 
+ 
+ /* ========================================
+@@ -596,6 +597,12 @@ function drawDetections(
+     sourceWidth,
+     sourceHeight
+ ) {
++    lastDrawArgs = [
++        detections,
++        sourceWidth,
++        sourceHeight
++    ];
++
+     if (!pcbPreview.complete) {
+         pcbPreview.onload = () => {
+             drawDetections(
+@@ -643,65 +650,25 @@ function drawDetections(
+ 
+ 
+     /*
+-     * The image uses object-fit: contain.
+-     * Calculate its actual displayed size
+-     * inside the preview area.
++     * Use the image's actual rendered rectangle. The CSS only caps
++     * the image size (max-width / max-height) and never enlarges it,
++     * so a small image is shown at its natural size rather than
++     * stretched to fill the container.
+      */
+-
+-    const imageAspect =
+-        sourceWidth /
+-        sourceHeight;
+-
+-    const containerAspect =
+-        containerWidth /
+-        containerHeight;
+-
+-
+-    let displayedWidth;
+-    let displayedHeight;
+-
+-
+-    if (
+-        imageAspect >
+-        containerAspect
+-    ) {
+-        displayedWidth =
+-            containerWidth;
+-
+-        displayedHeight =
+-            containerWidth /
+-            imageAspect;
+-
+-    } else {
+-        displayedHeight =
+-            containerHeight;
+-
+-        displayedWidth =
+-            containerHeight *
+-            imageAspect;
+-    }
+-
++    const imageRect =
++        pcbPreview.getBoundingClientRect();
+ 
+     const offsetX =
+-        (
+-            containerWidth -
+-            displayedWidth
+-        ) / 2;
++        imageRect.left - containerRect.left;
+ 
+     const offsetY =
+-        (
+-            containerHeight -
+-            displayedHeight
+-        ) / 2;
+-
++        imageRect.top - containerRect.top;
+ 
+     const scaleX =
+-        displayedWidth /
+-        sourceWidth;
++        imageRect.width / sourceWidth;
+ 
+     const scaleY =
+-        displayedHeight /
+-        sourceHeight;
++        imageRect.height / sourceHeight;
+ 
+ 
+     detections.forEach(
+@@ -858,7 +825,16 @@ function displayInspectionError(message) {
+ window.addEventListener(
+     "resize",
+     () => {
+-        clearDetectionCanvas();
++        const previewVisible =
++            !previewContainer.classList.contains(
++                "hidden"
++            );
++
++        if (lastDrawArgs && previewVisible) {
++            drawDetections(...lastDrawArgs);
++        } else {
++            clearDetectionCanvas();
++        }
+     }
+ );
+ 
+@@ -1038,6 +1014,8 @@ function resetResultPanel() {
+ 
+     detectionsList.innerHTML = "";
+ 
++    lastDrawArgs = null;
++
+     clearDetectionCanvas();
+ }
+ 
