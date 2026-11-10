@@ -192,4 +192,4 @@ training_runs/
 *.pt
 
 # Patch files
-.patch
+*.patch
